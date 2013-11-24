@@ -1,4 +1,4 @@
-/*globals PouchAdapter: true, Pouch.utils: true */
+/*globals PouchAdapter: true */
 
 "use strict";
 
@@ -79,7 +79,7 @@ function Pouch(name, opts, callback) {
       }
     }
   }
-};
+}
 
 Pouch.DEBUG = false;
 Pouch.openReqList = {};

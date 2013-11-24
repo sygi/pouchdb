@@ -6,6 +6,7 @@
 
 var qunit = module;
 var LevelPouch;
+var Pouch;
 var utils;
 
 if (typeof module !== undefined && module.exports) {
