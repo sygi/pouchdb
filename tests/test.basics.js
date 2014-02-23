@@ -557,15 +557,15 @@ adapters.map(function (adapter) {
       });
     });
 
-    it("Basic purge", function(done){
+    it("Basic purge", function (done) {
       var db = new PouchDB(dbs.name);
       var doc = {_id: "someid", something: 42};
-      db.put(doc, function(err, info){
+      db.put(doc, function (err, info) {
         should.not.exist(err);
-        db.purge(doc._id, function(){
-          db.get(doc._id, function(err, db){
-             should.exist(err);
-             done();
+        db.purge(doc._id, function () {
+          db.get(doc._id, function (err, db) {
+            should.exist(err);
+            done();
           });
         });
       });
