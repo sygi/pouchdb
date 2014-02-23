@@ -563,9 +563,26 @@ adapters.map(function (adapter) {
       db.put(doc, function (err, info) {
         should.not.exist(err);
         db.purge(doc._id, function () {
-          db.get(doc._id, function (err, db) {
+          db.get(doc._id, function (err, doc2) {
             should.exist(err);
             done();
+          });
+        });
+      });
+    });
+
+    it("Purging changed doc", function (done) {
+      var db = new PouchDB(dbs.name);
+      var doc = {_id: "onedoc", some: 32};
+      db.put(doc, function (err, info) {
+        var doc2 = {_id: "onedoc", some: 42, _rev: info.rev};
+        db.put(doc2, function (err, info) {
+          should.not.exist(err);
+          db.purge(doc._id, function () {
+            db.get(doc._id, function (err, dc) {
+              should.exist(err);
+              done();
+            });
           });
         });
       });
