@@ -555,7 +555,10 @@ adapters.map(function (adapter) {
       var doc = {_id: "someid", something: 42};
       db.put(doc, function (err, info) {
         should.not.exist(err);
-        db.purge(doc._id, function () {
+        var req = {};
+        req[info.id] = [info.rev];
+        db.purge(req, function (err, res) {
+          should.not.exist(err);
           db.get(doc._id, function (err, doc2) {
             should.exist(err);
             done();
@@ -569,13 +572,34 @@ adapters.map(function (adapter) {
       var doc = {_id: "onedoc", some: 32};
       db.put(doc, function (err, info) {
         var doc2 = {_id: "onedoc", some: 42, _rev: info.rev};
-        db.put(doc2, function (err, info) {
+        db.put(doc2, function (err, info2) {
           should.not.exist(err);
-          db.purge(doc._id, function () {
+          var req = {};
+          req[info.id] = [info2.rev];
+          db.purge(req, function (err, res) {
+            should.not.exist(err);
             db.get(doc._id, function (err, dc) {
               should.exist(err);
               done();
             });
+          });
+        });
+      });
+    });
+
+    it("Purging not a leaf", function (done) {
+      var db = new PouchDB(dbs.name);
+      var doc = {_id: "onedoc", some: 32};
+      db.put(doc, function (err, info) {
+        var doc2 = {_id: "onedoc", some: 42, _rev: info.rev};
+        db.put(doc2, function (err, info2) {
+          should.not.exist(err);
+          var req = {};
+          req[info.id] = [info.rev];
+          db.purge(req, function (err, res) {
+            //res.purged.should.equal({}); how should I achieve this?
+            //uncommented it throws 'expected {} to equal {}'
+            done();
           });
         });
       });
