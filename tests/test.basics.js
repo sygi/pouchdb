@@ -601,7 +601,7 @@ adapters.forEach(function (adapter) {
         should.not.exist(err);
         var req = {};
         req[info.id] = [info.rev];
-        db._purge(req, function (err, res) {
+        db.purge(req, function (err, res) {
           should.not.exist(err);
           db.get(doc._id, function (err, doc2) {
             should.exist(err);
@@ -620,7 +620,7 @@ adapters.forEach(function (adapter) {
           should.not.exist(err);
           var req = {};
           req[info.id] = [info2.rev];
-          db._purge(req, function (err, res) {
+          db.purge(req, function (err, res) {
             should.not.exist(err);
             db.get(doc._id, function (err, dc) {
               should.exist(err);
@@ -640,7 +640,7 @@ adapters.forEach(function (adapter) {
           should.not.exist(err);
           var req = {};
           req[info.id] = [info.rev];
-          db._purge(req, function (err, res) {
+          db.purge(req, function (err, res) {
             Object.keys(res.purged).length.should.equal(0);
             done();
           });
