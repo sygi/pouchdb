@@ -648,6 +648,155 @@ adapters.forEach(function (adapter) {
       });
     });
 
+    it("Purging winning rev", function (done) {
+      var simpleTree = [
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-b',
+            value: 'foo b'
+          }
+        ],
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-c',
+            value: 'foo c'
+          }
+        ]
+      ];
+      var db = new PouchDB(dbs.name);
+      testUtils.putTree(db, simpleTree, function () {
+        db.get("foo", {conflicts: true}, function (err, doc) {
+          doc._rev.should.equal("2-c", "correct winning rev");
+          db.purge({"foo": ["2-c"]}, function (err, res) {
+            Object.keys(res.purged).length.should.equal(1);
+            db.get("foo", function (err, doc) {
+              should.not.exist(err);
+              doc._rev.should.equal("2-b");
+              done();
+            });
+          });
+        });
+      });
+    });
+
+    it("Purging all revisions", function (done) {
+      var simpleTree = [
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-b',
+            value: 'foo b'
+          }
+        ],
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-c',
+            value: 'foo c'
+          }
+        ]
+      ];
+      var db = new PouchDB(dbs.name);
+      testUtils.putTree(db, simpleTree, function () {
+        db.get("foo", {conflicts: true}, function (err, doc) {
+          doc._rev.should.equal("2-c", "correct winning rev");
+          db.purge({"foo": ["2-b", "2-c"]}, function (err, res) {
+            res.purged.foo.length.should.equal(2);
+            db.get("foo", function (err, doc) {
+              should.exist(err);
+              done();
+            });
+          });
+        });
+      });
+    });
+
+    it("Purging second revision", function (done) {
+      var simpleTree = [
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-b',
+            value: 'foo b'
+          }
+        ],
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-c',
+            value: 'foo c'
+          }
+        ]
+      ];
+      var db = new PouchDB(dbs.name);
+      testUtils.putTree(db, simpleTree, function () {
+        db.get("foo", {conflicts: true}, function (err, doc) {
+          doc._rev.should.equal("2-c", "correct winning rev");
+          db.purge({"foo": ["2-b"]}, function (err, res) {
+            res.purged.foo.length.should.equal(1);
+            db.get("foo", function (err, doc) {
+              should.not.exist(err);
+              doc._rev.should.equal("2-c");
+              done();
+            });
+          });
+        });
+      });
+    });
+
+    it('db.info should give correct doc_count', function (done) {
+      new PouchDB(dbs.name).then(function (db) {
+        db.info().then(function (info) {
+          info.doc_count.should.equal(0);
+          return db.bulkDocs({docs : [{_id : '1'}, {_id : '2'}, {_id : '3'}]});
+        }).then(function () {
+          return db.info();
+        }).then(function (info) {
+          info.doc_count.should.equal(3);
+          return db.get('1');
+        }).then(function (doc) {
+          return db.remove(doc);
+        }).then(function () {
+          return db.info();
+        }).then(function (info) {
+          info.doc_count.should.equal(2);
+          done();
+        }, done);
+      }, done);
+    });
+
     if (adapter === 'local') {
       // TODO: this test fails in the http adapter in Chrome
       it('should allow unicode doc ids', function (done) {
