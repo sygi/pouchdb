@@ -604,6 +604,185 @@ adapters.map(function (adapter) {
       });
     });
 
+    it("Purging winning rev", function (done) {
+      var simpleTree = [
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-b',
+            value: 'foo b'
+          }
+        ],
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-c',
+            value: 'foo c'
+          }
+        ]
+      ];
+      var db = new PouchDB(dbs.name);
+      testUtils.putTree(db, simpleTree, function () {
+        db.get("foo", {conflicts: true}, function (err, doc) {
+          doc._rev.should.equal("2-c", "correct winning rev");
+          db.purge({"foo": ["2-c"]}, function (err, res) {
+            Object.keys(res.purged).length.should.equal(1);
+            db.get("foo", function (err, doc) {
+              should.not.exist(err);
+              doc._rev.should.equal("2-b");
+              done();
+            });
+          });
+        });
+      });
+    });
+
+    it("Purging all revisions", function (done) {
+      var simpleTree = [
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-b',
+            value: 'foo b'
+          }
+        ],
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-c',
+            value: 'foo c'
+          }
+        ]
+      ];
+      var db = new PouchDB(dbs.name);
+      testUtils.putTree(db, simpleTree, function () {
+        db.get("foo", {conflicts: true}, function (err, doc) {
+          doc._rev.should.equal("2-c", "correct winning rev");
+          db.purge({"foo": ["2-b", "2-c"]}, function (err, res) {
+            res.purged.foo.length.should.equal(2);
+            db.get("foo", function (err, doc) {
+              should.exist(err);
+              done();
+            });
+          });
+        });
+      });
+    });
+
+    it("Purging second revision", function (done) {
+      var simpleTree = [
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-b',
+            value: 'foo b'
+          }
+        ],
+        [
+          {
+            _id: 'foo',
+            _rev: '1-a',
+            value: 'foo a'
+          },
+          {
+            _id: 'foo',
+            _rev: '2-c',
+            value: 'foo c'
+          }
+        ]
+      ];
+      var db = new PouchDB(dbs.name);
+      testUtils.putTree(db, simpleTree, function () {
+        db.get("foo", {conflicts: true}, function (err, doc) {
+          doc._rev.should.equal("2-c", "correct winning rev");
+          db.purge({"foo": ["2-b"]}, function (err, res) {
+            res.purged.foo.length.should.equal(1);
+            db.get("foo", function (err, doc) {
+              should.not.exist(err);
+              doc._rev.should.equal("2-c");
+              done();
+            });
+          });
+        });
+      });
+    });
+
+    it('db.info should give correct doc_count', function (done) {
+      new PouchDB(dbs.name).then(function (db) {
+        db.info().then(function (info) {
+          info.doc_count.should.equal(0);
+          return db.bulkDocs({docs : [{_id : '1'}, {_id : '2'}, {_id : '3'}]});
+        }).then(function () {
+          return db.info();
+        }).then(function (info) {
+          info.doc_count.should.equal(3);
+          return db.get('1');
+        }).then(function (doc) {
+          return db.remove(doc);
+        }).then(function () {
+          return db.info();
+        }).then(function (info) {
+          info.doc_count.should.equal(2);
+          done();
+        }, done);
+      }, done);
+    });
+
+    if (adapter === 'local') {
+      // TODO: this test fails in the http adapter in Chrome
+      it('should allow unicode doc ids', function (done) {
+        var db = new PouchDB(dbs.name);
+        var ids = [
+          // "PouchDB is awesome" in Japanese, contains 1-3 byte chars
+          '\u30d1\u30a6\u30c1\u30e5DB\u306f\u6700\u9ad8\u3060',
+          '\u03B2', // 2-byte utf-8 char: 3b2
+          '\uD843\uDF2D', // exotic 4-byte utf-8 char: 20f2d
+          '\u0000foo\u0000bar\u0001baz\u0002quux', // like mapreduce
+          '\u0000',
+          '\u30d1'
+        ];
+        var numDone = 0;
+        ids.forEach(function (id) {
+          var doc = {_id : id, foo : 'bar'};
+          db.put(doc).then(function (info) {
+            doc._rev = info.rev;
+            return db.put(doc);
+          }).then(function () {
+            return db.get(id);
+          }).then(function (resp) {
+            resp._id.should.equal(id);
+            if (++numDone === ids.length) {
+              done();
+            }
+          }, done);
+        });
+      });
+    }
   });
 
 });
