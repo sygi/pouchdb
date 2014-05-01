@@ -4,7 +4,29 @@
 
 var testUtils = {};
 
-testUtils.PERSIST_DATABASES = false;
+function uniq(list) {
+  var map = {};
+  list.forEach(function (item) {
+    map[item] = true;
+  });
+  return Object.keys(map);
+}
+
+testUtils.params = function () {
+  if (typeof module !== 'undefined' && module.exports) {
+    return process.env;
+  }
+  var paramStr = document.location.search.slice(1);
+  return paramStr.split('&').reduce(function (acc, val) {
+    if (!val) {
+      return acc;
+    }
+    var tmp = val.split('=');
+    acc[tmp[0]] = tmp[1] || true;
+    return acc;
+  }, {});
+};
+
 testUtils.couchHost = function () {
   if (typeof module !== 'undefined' && module.exports) {
     return process.env.COUCH_HOST || 'http://localhost:5984';
@@ -12,62 +34,7 @@ testUtils.couchHost = function () {
   // In the browser we default to the CORS server, in future will change
   return 'http://localhost:2020';
 };
-testUtils.cleanupAllDbs = function (done) {
-  var deleted = 0;
-  var adapters = Object.keys(PouchDB.adapters).filter(function (adapter) {
-      return adapter !== 'http' && adapter !== 'https';
-    });
-  function finished() {
-    // Restart text execution
-    done();
-  }
-  function dbDeleted() {
-    deleted++;
-    if (deleted === adapters.length) {
-      finished();
-    }
-  }
-  if (!adapters.length) {
-    finished();
-  }
-  // Remove old allDbs to prevent DOM exception
-  adapters.forEach(function (adapter) {
-    if (adapter === 'http' || adapter === 'https') {
-      return;
-    }
-    PouchDB.destroy(PouchDB.allDBName(adapter), dbDeleted);
-  });
-};
-testUtils.cleanupTestDatabases = function (done) {
-  if (testUtils.PERSIST_DATABASES) {
-    return;
-  }
-  var dbCount;
-  var deleted = 0;
-  function finished() {
-    testUtils.cleanupAllDbs(done);
-  }
-  function dbDeleted() {
-    if (++deleted === dbCount) {
-      finished();
-    }
-  }
-  PouchDB.allDbs(function (err, dbs) {
-    if (!dbs.length) {
-      finished();
-    }
-    dbCount = dbs.length;
-    dbs.forEach(function (db) {
-      PouchDB.destroy(db, dbDeleted);
-    });
-  });
-};
-testUtils.uuid = function () {
-  var S4 = function () {
-    return Math.floor(Math.random() * 65536).toString(16);
-  };
-  return S4() + S4() + '-' + S4() + '-' + S4() + '-' + S4() + '-' + S4() + S4() + S4();
-};
+
 testUtils.makeBlob = function (data, type) {
   if (typeof module !== 'undefined' && module.exports) {
     return new Buffer(data);
@@ -75,17 +42,28 @@ testUtils.makeBlob = function (data, type) {
     return PouchDB.utils.createBlob([data], { type: type });
   }
 };
+
 testUtils.readBlob = function (blob, callback) {
   if (typeof module !== 'undefined' && module.exports) {
     callback(blob.toString());
   } else {
     var reader = new FileReader();
     reader.onloadend = function (e) {
-      callback(this.result);
+      
+      var binary = "";
+      var bytes = new Uint8Array(this.result);
+      var length = bytes.byteLength;
+      
+      for (var i = 0; i < length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      
+      callback(binary);
     };
-    reader.readAsBinaryString(blob);
+    reader.readAsArrayBuffer(blob);
   }
 };
+
 testUtils.base64Blob = function (blob, callback) {
   if (typeof module !== 'undefined' && module.exports) {
     callback(blob.toString('base64'));
@@ -98,40 +76,6 @@ testUtils.base64Blob = function (blob, callback) {
     reader.readAsDataURL(blob);
   }
 };
-testUtils.openTestAsyncDB = function (name) {
-  return new PouchDB(name, function (err, db) {
-    if (err) {
-      console.error(err);
-      throw new Error('failed to open database');
-    }
-  });
-};
-testUtils.openTestDB = function (name, opts, callback) {
-  if (typeof opts === 'function') {
-    callback = opts;
-    opts = {};
-  }
-  new PouchDB(name, opts, function (err, db) {
-    if (err) {
-      console.error(err);
-      return callback(err);
-    }
-    callback.apply(this, arguments);
-  });
-};
-testUtils.initTestDB = function (name, opts, callback) {
-  // ignore errors, the database might not exist
-  PouchDB.destroy(name, function (err) {
-    testUtils.openTestDB(name, opts, callback);
-  });
-};
-testUtils.initDBPair = function (local, remote, callback) {
-  testUtils.initTestDB(local, function (err, localDb) {
-    testUtils.initTestDB(remote, function (err, remoteDb) {
-      callback(localDb, remoteDb);
-    });
-  });
-};
 
 // Prefix http adapter database names with their host and
 // node adapter ones with a db location
@@ -139,18 +83,31 @@ testUtils.adapterUrl = function (adapter, name) {
   if (adapter === 'http') {
     return testUtils.couchHost() + '/' + name;
   }
-  return typeof process === 'undefined' ? name : PouchDB.prefix + name;
+  return name;
 };
 
 // Delete specified databases
 testUtils.cleanup = function (dbs, done) {
 
+  dbs = uniq(dbs);
+
   var deleted = 0;
   var num = dbs.length;
+  var errors = [];
 
-  function dbDeleted() {
+  function dbDeleted(err, res) {
+    // 400 is for an unexpected return from CouchDB, filed
+    // https://issues.apache.org/jira/browse/COUCHDB-2205
+    if (err && (err.status !== 404 && err.status !== 400)) {
+      errors.push(err);
+    }
     if (++deleted === num) {
-      done();
+      if (errors.length > 0) {
+        // TODO: report all the errors
+        done(errors[0]);
+      } else {
+        done();
+      }
     }
   }
 
@@ -159,20 +116,6 @@ testUtils.cleanup = function (dbs, done) {
   });
 };
 
-var testId = testUtils.uuid();
-testUtils.generateAdapterUrl = function (id) {
-  var opt = id.split('-');
-  var name = 'testdb_' + testId;
-  if (opt[1]) {
-    name = name + '_' + opt[1];
-  }
-  if (opt[0] === 'local') {
-    return typeof process === 'undefined' ? name : PouchDB.prefix + name;
-  }
-  if (opt[0] === 'http') {
-    return testUtils.couchHost() + '/' + name;
-  }
-};
 // Put doc after prevRev (so that doc is a child of prevDoc
 // in rev_tree). Doc must have _rev. If prevRev is not specified
 // just insert doc with correct _rev (new_edits=false!)
@@ -191,6 +134,7 @@ testUtils.putAfter = function (db, doc, prevRev, callback) {
   };
   db.put(newDoc, { new_edits: false }, callback);
 };
+
 // docs will be inserted one after another
 // starting from root
 testUtils.putBranch = function (db, docs, callback) {
@@ -216,6 +160,7 @@ testUtils.putBranch = function (db, docs, callback) {
   }
   insert(0);
 };
+
 testUtils.putTree = function (db, tree, callback) {
   function insert(i) {
     var branch = tree[i];
@@ -229,6 +174,7 @@ testUtils.putTree = function (db, tree, callback) {
   }
   insert(0);
 };
+
 testUtils.writeDocs = function (db, docs, callback, res) {
   if (!res) {
     res = [];
@@ -242,6 +188,7 @@ testUtils.writeDocs = function (db, docs, callback, res) {
     testUtils.writeDocs(db, docs, callback, res);
   });
 };
+
 // Borrowed from: http://stackoverflow.com/a/840849
 testUtils.eliminateDuplicates = function (arr) {
   var i, element, len = arr.length, out = [], obj = {};
@@ -255,6 +202,7 @@ testUtils.eliminateDuplicates = function (arr) {
   }
   return out;
 };
+
 // ---- CORS Specific Utils ---- //
 //enable CORS on server
 testUtils.enableCORS = function (dburl, callback) {
@@ -403,6 +351,7 @@ if (typeof module !== 'undefined' && module.exports) {
     testDir = process.env.TESTS_DIR ? process.env.TESTS_DIR : './tmp';
     testDir = testDir.slice(-1) === '/' ? testDir : testDir + '/';
     global.PouchDB.prefix = testDir + global.PouchDB.prefix;
+    require('../lib/adapters/leveldb').use_prefix = true;
     require('bluebird').onPossiblyUnhandledRejection(function (e, promise) {
       throw e;
     });
